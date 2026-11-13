@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import {
   LayoutDashboard, FolderKanban, CheckSquare, CalendarDays, Users, FileText, Activity, Bell, Search, Menu, X,
-  Settings, UserCog, LogOut, ChevronsUpDown, Plus, Check,
+  Settings, UserCog, LogOut, ChevronsUpDown, Plus, Check, Target, BarChart3,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import { Avatar } from "./ui";
@@ -64,6 +64,7 @@ export function AppShell({ ws, role, user, spaces, projects, unread: initialUnre
     { href: `${base}/calendar`, label: "Calendario", icon: CalendarDays },
     ...(role !== "guest" ? [{ href: `${base}/teams`, label: "Equipos", icon: Users }] : []),
     { href: `${base}/docs`, label: "Documentos", icon: FileText },
+    ...(role !== "guest" ? [{ href: `${base}/goals`, label: "Objetivos", icon: Target }, { href: `${base}/reports`, label: "Reportes", icon: BarChart3 }] : []),
     { href: `${base}/activity`, label: "Actividad", icon: Activity },
     { href: `${base}/members`, label: "Miembros", icon: UserCog },
     ...(role === "admin" ? [{ href: `${base}/settings`, label: "Configuración", icon: Settings }] : []),

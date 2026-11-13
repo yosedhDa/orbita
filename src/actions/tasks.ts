@@ -5,6 +5,7 @@ import { sql } from "@/lib/db";
 import { safeAction, UserError, type ActionResult } from "@/lib/action";
 import { AccessError, LEVEL, requireProject, requireTask, wsContextById } from "@/lib/access";
 import { logActivity, notify } from "@/lib/events";
+import { runAutomations } from "@/lib/automations";
 import { PRIORITY_LABEL, STATUS_LABEL, type Priority, type TaskStatus } from "@/lib/labels";
 
 const uuid = z.string().uuid();
@@ -57,6 +58,7 @@ export const createTask = safeAction(async (fd) => {
   await logActivity({ workspaceId: ctx.ws.id, projectId: d.projectId, actorId: ctx.user.id, entityType: "task", entityId: t.id, action: "task.created",
     summary: `creó ${d.parentId ? "la subtarea" : "la tarea"} «${d.title}» en ${p.name}` });
   await notify([d.assigneeId], { workspaceId: ctx.ws.id, actorId: ctx.user.id, kind: "assignment", title: `${ctx.user.name} te asignó «${d.title}»`, body: p.name, link: `/w/${ctx.ws.slug}/projects/${d.projectId}?task=${t.id}` });
+  await runAutomations(ctx.ws, ctx.user, { type: "task_created", taskId: t.id });
   revalidate(ctx.ws.slug);
   return { ok: true, data: { id: t.id } };
 });
@@ -112,6 +114,8 @@ async function applyTaskChanges(ctx: Awaited<ReturnType<typeof wsContextById>>, 
     await notify([next.assignee_id, before.created_by, ...watchers], { workspaceId: ctx.ws.id, actorId: ctx.user.id, kind: "status",
       title: `«${next.title}» pasó a ${STATUS_LABEL[patch.status]}`, body: `Cambio realizado por ${ctx.user.name}`, link });
   }
+  if (patch.status && patch.status !== before.status)
+    await runAutomations(ctx.ws, ctx.user, { type: "status_changed", taskId, status: patch.status });
 }
 
 export const updateTask = safeAction(async (fd) => {

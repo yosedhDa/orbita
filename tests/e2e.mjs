@@ -400,12 +400,114 @@ await step("Interfaz responsive en smartphone (sin desbordamiento horizontal)", 
   await m.close();
 });
 
+await step("Automatizaciones: al crear tarea añade checklist; al pasar a revisión notifica", async () => {
+  await A.page.goto(`${projectUrl}?view=automations`);
+  await A.page.fill("#au-name", "Checklist inicial");
+  await A.page.selectOption("#au-trigger", "task_created");
+  await A.page.selectOption("#au-action", "add_checklist");
+  await A.page.fill("textarea[name=value_add_checklist]", "Definir criterios\nEstimar esfuerzo");
+  await A.page.click("text=Crear automatización");
+  await A.page.locator("[data-automation='Checklist inicial']").waitFor();
+  await A.page.fill("#au-name", "Avisar a Bruno en revisión");
+  await A.page.selectOption("#au-trigger", "status_changed");
+  await A.page.selectOption("#au-ts", "in_review");
+  await A.page.selectOption("#au-action", "notify_user");
+  await A.page.selectOption("select[name=value_notify_user]", { label: bruno.name });
+  await A.page.click("text=Crear automatización");
+  await A.page.locator("[data-automation='Avisar a Bruno en revisión']").waitFor();
+  await A.page.goto(`${projectUrl}?view=list`);
+  await A.page.fill("input[name=title]", "Preparar campaña");
+  await A.page.click("button:has-text('Añadir')");
+  await A.page.locator(`[data-task-row="Preparar campaña"]`).waitFor();
+  const [t] = await sql`select id from tasks where project_id = ${projectId} and title = 'Preparar campaña'`;
+  const items = await sql`select text from checklist_items where task_id = ${t.id} order by position`;
+  assert(items.length === 2 && items[0].text === "Definir criterios", `checklist: ${JSON.stringify(items)}`);
+  await A.page.goto(`${projectUrl}?view=list&task=${t.id}`);
+  const drawer = A.page.getByTestId("task-drawer");
+  await drawer.locator("#te-status").selectOption("in_review");
+  await drawer.locator("button:has-text('Guardar cambios')").click();
+  let n;
+  for (let i = 0; i < 20 && !n; i++) { [n] = await sql`select n.title from notifications n join users u on u.id = n.user_id where u.email = ${bruno.email} and n.kind = 'automation' and n.title like '%Preparar campaña%'`; if (!n) await A.page.waitForTimeout(300); }
+  assert(n, "Bruno debe recibir la notificación de la automatización");
+  const [{ c }] = await sql`select count(*)::int c from activity_log where entity_id = ${t.id} and action = 'automation.run'`;
+  assert(c === 2, `esperaba 2 ejecuciones registradas, hay ${c}`);
+  await A.page.reload();
+  await drawer.getByText(/automatización «Avisar a Bruno/).first().waitFor();
+});
+
+await step("Objetivos y KPI: métrica automática por avance de proyecto y KPI manual", async () => {
+  await A.page.goto(`/w/${slug}/goals`);
+  await A.page.click("button:has-text('Nuevo objetivo')");
+  await A.page.fill("#g-title", "Terminar el lanzamiento");
+  await A.page.selectOption("#g-metric", "project_progress");
+  await A.page.locator("label", { hasText: "Lanzamiento Web" }).locator("input").check();
+  await A.page.click("button:has-text('Crear objetivo')");
+  const card = A.page.locator("[data-goal='Terminar el lanzamiento']");
+  await card.waitFor();
+  const [{ pct }] = await sql`select round(100.0 * count(*) filter (where status = 'done') / count(*), 1)::float as pct from tasks where project_id = ${projectId} and parent_id is null`;
+  const shown = Number(await card.getByTestId("goal-current").innerText());
+  assert(Math.abs(shown - pct) < 0.11, `objetivo muestra ${shown}, avance real ${pct}`);
+  await A.page.click("button:has-text('Nuevo objetivo')");
+  await A.page.fill("#g-title", "Leads calificados");
+  await A.page.fill("#g-target", "50");
+  await A.page.fill("#g-unit", "leads");
+  await A.page.click("button:has-text('Crear objetivo')");
+  const kpi = A.page.locator("[data-goal='Leads calificados']");
+  await kpi.waitFor();
+  await kpi.locator("input[name=value]").fill("30");
+  await kpi.locator("input[name=note]").fill("Campaña de octubre");
+  await kpi.locator("button:has-text('Registrar')").click();
+  await kpi.getByText("Campaña de octubre").waitFor();
+  assert((await kpi.getByTestId("goal-current").innerText()) === "30", "valor manual actualizado");
+  // Bruno es líder (asignado en la prueba de equipos): ve y puede crear objetivos; un usuario ajeno no
+  const r = await B.page.goto(`/w/${slug}/goals`);
+  assert(r.status() === 200 && (await B.page.locator("button:has-text('Nuevo objetivo')").count()) === 1, "líder ve y crea objetivos");
+  const rx = await X.page.goto(`/w/${slug}/goals`); // X cerró sesión en la prueba de recuperación
+  assert(rx.status() === 404 || X.page.url().includes("/login"), "usuario ajeno no ve objetivos");
+});
+
+await step("Reportes de productividad coinciden con la base de datos y exportan CSV", async () => {
+  await A.page.goto(`/w/${slug}/reports`);
+  const shown = Number(await A.page.getByTestId("rep-Tareas completadas").innerText());
+  const [{ n }] = await sql`select count(*)::int n from tasks where workspace_id = (select id from workspaces where slug = ${slug}) and completed_at >= current_date - 29`;
+  assert(shown === n, `reporte ${shown} vs BD ${n}`);
+  await A.page.locator(`[data-report-member="${bruno.name}"]`).waitFor();
+  const wsId = (await sql`select id from workspaces where slug = ${slug}`)[0].id;
+  const today = new Date().toISOString().slice(0, 10);
+  const csv = await (await A.ctx.request.get(`/api/export?ws=${wsId}&type=report&from=2026-01-01&to=${today}`)).text();
+  assert(csv.includes("Reporte de productividad") && csv.includes(bruno.name) && csv.includes("Lanzamiento Web"), "CSV del reporte");
+  // Bruno (sin acceso al proyecto privado) no debe verlo en su reporte
+  const csvB = await (await B.ctx.request.get(`/api/export?ws=${wsId}&type=report&from=2026-01-01&to=${today}`)).text();
+  assert(csvB.includes("Lanzamiento Web") && !csvB.includes("Confidencial"), "reporte de Bruno sin proyecto privado");
+});
+
+await step("Suscripción de calendario ICS (Google Calendar) privada y revocable", async () => {
+  await B.page.goto("/account");
+  await B.page.click("text=Activar suscripción de calendario");
+  const f = B.page.locator("input[readonly][value*='/api/calendar/']").first();
+  await f.waitFor();
+  const url = await f.inputValue();
+  const anon = await browser.newContext();
+  const res = await anon.request.get(url);
+  const body = await res.text();
+  assert(res.status() === 200 && res.headers()["content-type"].includes("text/calendar"), "debe devolver text/calendar");
+  assert(body.startsWith("BEGIN:VCALENDAR") && body.includes("Diseñar maqueta") && body.includes("END:VCALENDAR"), "debe incluir tareas de Bruno");
+  assert(!body.includes("Confidencial"), "no debe incluir proyectos sin acceso");
+  await B.page.click("text=Generar nueva URL");
+  await B.page.waitForTimeout(1000);
+  assert((await anon.request.get(url)).status() === 404, "la URL anterior deja de funcionar");
+  await anon.close();
+});
+
 await step("Capturas de escritorio", async () => {
   await A.page.setViewportSize({ width: 1440, height: 900 });
   await A.page.goto(`/w/${slug}`); await A.page.screenshot({ path: `${OUT}/desktop-dashboard.png`, fullPage: true });
   await A.page.goto(`${projectUrl}?view=board`); await A.page.screenshot({ path: `${OUT}/desktop-board.png` });
   await A.page.goto(`${projectUrl}?view=overview`); await A.page.screenshot({ path: `${OUT}/desktop-project.png`, fullPage: true });
   await A.page.goto(`/w/${slug}/calendar?mode=month&date=2026-11-01`); await A.page.screenshot({ path: `${OUT}/desktop-calendar.png` });
+  await A.page.goto(`/w/${slug}/goals`); await A.page.screenshot({ path: `${OUT}/desktop-goals.png`, fullPage: true });
+  await A.page.goto(`/w/${slug}/reports`); await A.page.screenshot({ path: `${OUT}/desktop-reports.png`, fullPage: true });
+  await A.page.goto(`${projectUrl}?view=automations`); await A.page.screenshot({ path: `${OUT}/desktop-automations.png` });
 });
 
 console.log(`\n${passed} pasaron, ${failures.length} fallaron${failures.length ? `: ${failures.join(" | ")}` : ""}\n`);

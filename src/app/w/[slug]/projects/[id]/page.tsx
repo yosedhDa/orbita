@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import clsx from "clsx";
-import { CalendarDays, FileText, Kanban, LayoutList, Lock, Settings, Target, Users } from "lucide-react";
+import { CalendarDays, FileText, Kanban, LayoutList, Lock, Settings, Target, Users, Zap } from "lucide-react";
 import { LEVEL, getWsContext, projectLevel } from "@/lib/access";
 import { sql } from "@/lib/db";
 import { listActivity, listEvents, listTasks, visibleMembers } from "@/lib/queries";
@@ -18,6 +18,9 @@ import { ActivityList, Attachments, Comments } from "@/components/Collab";
 import { ProjectForm } from "@/components/ProjectForm";
 import { ProjectMembers, PublicLinks } from "@/components/SharePanel";
 import { EventForm } from "@/components/EventForm";
+import { AutomationForm } from "@/components/AutomationForm";
+import { toggleAutomation } from "@/actions/stage3";
+import { ActionButton } from "@/components/forms";
 import { PROJECT_ROLE_LABEL, STATUS_LABEL, STATUS_ORDER, STATUS_STYLE, type Priority, type ProjectRole, type ProjectStatus, type WorkspaceRole } from "@/lib/labels";
 
 type SP = { view?: string; task?: string; month?: string; assignee?: string; status?: string };
@@ -78,6 +81,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
     { k: "calendar", l: "Calendario", icon: CalendarDays },
     { k: "files", l: "Archivos y documentos", icon: FileText },
     { k: "people", l: canAdmin ? "Compartir" : "Participantes", icon: Users },
+    ...(canAdmin && ctx.role !== "guest" ? [{ k: "automations", l: "Automatizaciones", icon: Zap }] : []),
     ...(canEdit ? [{ k: "settings", l: "Configuración", icon: Settings }] : []),
   ];
 
@@ -206,6 +210,10 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
         </div>
       )}
 
+      {view === "automations" && canAdmin && ctx.role !== "guest" && (
+        <Automations ctx={ctx} projectId={id} members={assignable.map((m) => ({ id: m.id, name: m.name }))} />
+      )}
+
       {view === "settings" && canEdit && (
         <div className="mx-auto max-w-2xl space-y-6">
           <section className="card p-5 sm:p-6">
@@ -271,5 +279,47 @@ async function Milestones({ ctx, projectId, canEdit }: { ctx: Awaited<ReturnType
         </ul>
       )}
     </section>
+  );
+}
+
+const TRIGGER_TEXT: Record<string, string> = { task_created: "se crea una tarea", status_changed: "una tarea cambia" };
+const ACTION_TEXT: Record<string, string> = { notify_user: "notificar a", set_assignee: "asignar a", set_priority: "prioridad", set_status: "mover a", add_checklist: "añadir checklist", add_comment: "comentar" };
+
+async function Automations({ ctx, projectId, members }: { ctx: Awaited<ReturnType<typeof getWsContext>>; projectId: string; members: { id: string; name: string }[] }) {
+  const rules = await sql<{ id: string; name: string; enabled: boolean; trigger: string; trigger_status: string | null; action: string; action_value: string; run_count: number; last_run_at: Date | null }[]>`
+    select id, name, enabled, trigger, trigger_status, action, action_value, run_count, last_run_at from automations where project_id = ${projectId} order by created_at`;
+  const name = (id: string) => members.find((m) => m.id === id)?.name ?? "persona sin acceso";
+  const valueText = (r: (typeof rules)[number]) =>
+    r.action === "notify_user" || r.action === "set_assignee" ? name(r.action_value)
+      : r.action === "set_priority" ? ({ high: "Alta", medium: "Media", low: "Baja" } as Record<string, string>)[r.action_value]
+      : r.action === "set_status" ? STATUS_LABEL[r.action_value as keyof typeof STATUS_LABEL]
+      : `«${r.action_value.split("\n")[0].slice(0, 40)}${r.action_value.length > 40 ? "…" : ""}»`;
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <section className="card p-5">
+        <h2 className="mb-1 font-semibold">Reglas activas</h2>
+        <p className="mb-4 text-sm text-ink-500">Se ejecutan automáticamente y quedan registradas en el historial de cada tarea.</p>
+        {rules.length === 0 ? <p className="text-sm text-ink-500">Aún no hay automatizaciones en este proyecto.</p> : (
+          <ul className="divide-y divide-ink-100">
+            {rules.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-3 py-3" data-automation={r.name}>
+                <Zap className={clsx("h-4 w-4", r.enabled ? "text-amber-500" : "text-ink-300")} />
+                <div className="min-w-0 flex-1">
+                  <p className={clsx("text-sm font-medium", !r.enabled && "text-ink-400")}>{r.name}</p>
+                  <p className="text-xs text-ink-500">Cuando {TRIGGER_TEXT[r.trigger]}{r.trigger === "status_changed" && (r.trigger_status ? ` a ${STATUS_LABEL[r.trigger_status as keyof typeof STATUS_LABEL]}` : " de estado")} → {ACTION_TEXT[r.action]} {valueText(r)}</p>
+                  <p className="text-[11px] text-ink-400">Ejecutada {r.run_count} {r.run_count === 1 ? "vez" : "veces"}</p>
+                </div>
+                <ActionButton action={toggleAutomation} hidden={{ workspaceId: ctx.ws.id, automationId: r.id }} className="btn-secondary btn-sm">{r.enabled ? "Pausar" : "Activar"}</ActionButton>
+                <ActionButton action={toggleAutomation} hidden={{ workspaceId: ctx.ws.id, automationId: r.id, delete: "1" }} confirm={`¿Eliminar la regla «${r.name}»?`} className="btn-ghost btn-sm text-rose-600">Eliminar</ActionButton>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="card p-5">
+        <h2 className="mb-4 font-semibold">Nueva automatización</h2>
+        <AutomationForm workspaceId={ctx.ws.id} projectId={projectId} members={members} />
+      </section>
+    </div>
   );
 }

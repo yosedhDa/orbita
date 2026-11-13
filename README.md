@@ -16,6 +16,10 @@ Orbita es una aplicación web colaborativa (SaaS) para gestionar proyectos, tare
 | **Calendario** | Vistas mes, semana y día, planificación por responsable (14 días), cronograma tipo Gantt, reuniones e hitos, fin de proyectos y alertas de vencimientos próximos |
 | **Colaboración** | Comentarios, menciones, notificaciones internas (campana con contador), centro de actividad, búsqueda global y sincronización casi en tiempo real (sondeo cada 10 s) |
 | **Compartir y accesos** | Invitar por correo al espacio o a un proyecto concreto, permisos de lectura, edición o administración por proyecto, revocar invitaciones y miembros, enlaces públicos de solo lectura (con caducidad opcional y revocables) |
+| **Reportes** | Productividad por periodo (7/30/90 días o rango libre) y por equipo: tareas creadas y completadas, cumplimiento en fecha, vencidas, tiempo medio de ciclo, ritmo semanal, tabla por persona, cumplimiento por equipo y salud de proyectos (avance frente a tiempo transcurrido). Exportación a CSV (Excel) y a PDF desde el diálogo de impresión del navegador |
+| **Objetivos y KPI** | Metas con responsable, equipo, fechas y proyectos vinculados. Tres formas de medir: KPI manual con historial de actualizaciones, % de avance de los proyectos vinculados (automático) o tareas completadas en el periodo (automático). Estado calculado: en camino, en riesgo, atrasado o logrado, frente al avance esperado a la fecha |
+| **Automatizaciones** | Reglas por proyecto «cuando se crea una tarea / cambia de estado (a X) → notificar, asignar, cambiar prioridad, mover de estado, añadir checklist o comentar». Se pueden pausar, cuentan sus ejecuciones, quedan en el historial de la tarea y tienen protección contra bucles |
+| **Calendario externo** | URL privada iCalendar por usuario para suscribirse desde Google Calendar, Outlook o Apple Calendar (tareas, reuniones, hitos y fines de proyecto). Revocable y sin necesidad de OAuth |
 | **Administración** | Roles, registro de auditoría, uso del espacio y exportación a CSV (Excel) de tareas y proyectos |
 
 ### Roles
@@ -111,7 +115,7 @@ Con la app corriendo (`npm run build && npm start`) y la base de datos accesible
 npm run test:e2e
 ```
 
-La suite comprueba los criterios de aceptación con tres usuarios reales (administrador, colaborador e invitado): registro e inicio de sesión, creación del espacio, invitación y aceptación, proyectos y tareas, edición e historial, subtareas, checklist, menciones y notificaciones, Kanban con arrastrar y soltar persistido, calendario, dashboard contra la base de datos, proyecto privado inaccesible (404) e invisible en listados y exportaciones, rechazo de escrituras sin permiso (403), adjuntos con control de acceso, invitado limitado a un proyecto, enlace público (sin datos privados) y su revocación, revocación de miembros, equipos y líderes, documentos con tablas y versiones, recuperación de contraseña (token de un solo uso que cierra las sesiones previas), sincronización entre usuarios y diseño móvil sin desbordamiento. Las capturas quedan en `tests/output/`.
+La suite (33 escenarios) comprueba los criterios de aceptación con tres usuarios reales (administrador, colaborador e invitado): registro e inicio de sesión, creación del espacio, invitación y aceptación, proyectos y tareas, edición e historial, subtareas, checklist, menciones y notificaciones, Kanban con arrastrar y soltar persistido, calendario, dashboard contra la base de datos, proyecto privado inaccesible (404) e invisible en listados y exportaciones, rechazo de escrituras sin permiso (403), adjuntos con control de acceso, invitado limitado a un proyecto, enlace público (sin datos privados) y su revocación, revocación de miembros, equipos y líderes, documentos con tablas y versiones, recuperación de contraseña (token de un solo uso que cierra las sesiones previas), sincronización entre usuarios diseño móvil sin desbordamiento, automatizaciones (checklist al crear y notificación al pasar a revisión), objetivos automáticos y manuales, reportes contra la base de datos (y sin proyectos privados para quien no tiene acceso) y feed ICS privado y revocable. Las capturas quedan en `tests/output/`.
 
 ## Publicación en internet
 
@@ -136,15 +140,17 @@ Consulta **[DEPLOY.md](./DEPLOY.md)** para el paso a paso con Vercel + Supabase 
 - Aislamiento entre espacios: cada consulta filtra por `workspace_id` y por nivel de acceso. Los recursos ajenos responden 404, para no revelar su existencia.
 - Cabeceras de seguridad (`X-Frame-Options`, `Referrer-Policy`, etc.).
 
-## Hoja de ruta (etapa 3, aún no implementada)
+## Hoja de ruta
 
-Ya existe: exportación CSV/Excel, % de cumplimiento por equipo y carga de trabajo. **Pendiente:**
+**Etapa 3 implementada:** reportes de productividad, exportación CSV y PDF (impresión del navegador), objetivos y KPI, indicadores de cumplimiento por equipo, automatizaciones y suscripción de calendario (ICS).
 
-- Integraciones con Google Calendar y Google Drive (requieren un proyecto OAuth en Google Cloud: *client ID* y *secret*).
-- Exportación a PDF y reportes de productividad avanzados.
-- Automatizaciones (reglas "cuando X, entonces Y").
-- IA para resumir proyectos y generar tareas (requiere una clave de API de un proveedor de modelos).
-- Objetivos y KPI con metas.
-- Tiempo real por WebSocket (p. ej. Supabase Realtime o Pusher) en lugar de sondeo.
-- Almacenamiento de archivos en S3, R2 o Supabase Storage para archivos de más de 4 MB.
-- Edición colaborativa simultánea del mismo documento (CRDT). Hoy se detectan los conflictos y se pregunta antes de sobrescribir.
+**Pendiente (requiere servicios o credenciales externas):**
+
+| Funcionalidad | Qué debe proporcionar el administrador |
+|---|---|
+| IA para resumir proyectos y generar tareas | Una clave de API de un proveedor de modelos (p. ej. Anthropic) y aceptar el coste por uso |
+| Integración con Google Drive (adjuntar archivos de Drive) | Proyecto en Google Cloud con OAuth (client ID y secret) y pantalla de consentimiento verificada |
+| Sincronización bidireccional con Google Calendar (crear eventos desde Orbita) | El mismo proyecto OAuth de Google. La suscripción de solo lectura (ICS) ya funciona sin esto |
+| Notificaciones por correo | Ya implementadas: solo requieren configurar SMTP |
+
+**Mejoras técnicas futuras:** tiempo real por WebSocket en lugar de sondeo, almacenamiento de archivos en S3, R2 o Supabase Storage para archivos de más de 4 MB, edición simultánea del mismo documento (CRDT) y PDF generado en el servidor.
