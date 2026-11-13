@@ -16,7 +16,6 @@ function create() {
     // Poner DATABASE_PREPARE=false si se usa un pooler en modo transacción (p.ej. Supabase :6543)
     prepare: process.env.DATABASE_PREPARE !== "false",
     transform: { undefined: null },
-    connection: { TimeZone: process.env.APP_TIMEZONE || "UTC" },
   });
 }
 

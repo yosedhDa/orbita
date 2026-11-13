@@ -23,17 +23,17 @@ export default async function Dashboard({ params }: { params: Promise<{ slug: st
              count(*) filter (where status = 'in_progress')::int as in_progress,
              count(*) filter (where status = 'in_review')::int as in_review,
              count(*) filter (where status = 'done')::int as done,
-             count(*) filter (where status <> 'done' and due_date < current_date)::int as overdue,
-             count(*) filter (where status <> 'done' and due_date between current_date and current_date + 7)::int as due_week
+             count(*) filter (where status <> 'done' and due_date < ${todayStr()}::date)::int as overdue,
+             count(*) filter (where status <> 'done' and due_date between ${todayStr()}::date and ${todayStr()}::date + 7)::int as due_week
       from tasks t where t.workspace_id = ${ctx.ws.id} and project_access_level(${uid}, t.project_id) >= 1`,
     sql<{ kind: string; id: string; title: string; date: string; project_id: string; project_name: string; color: string; status: TaskStatus | null; priority: "high" | "medium" | "low" | null; assignee: string | null; assignee_color: string | null }[]>`
       (select 'task' as kind, t.id, t.title, to_char(t.due_date, 'YYYY-MM-DD') as date, t.project_id, p.name as project_name, p.color, t.status, t.priority, u.name as assignee, u.avatar_color as assignee_color
        from tasks t join projects p on p.id = t.project_id left join users u on u.id = t.assignee_id
-       where t.workspace_id = ${ctx.ws.id} and t.status <> 'done' and t.due_date between current_date and current_date + 14
+       where t.workspace_id = ${ctx.ws.id} and t.status <> 'done' and t.due_date between ${todayStr()}::date and ${todayStr()}::date + 14
          and project_access_level(${uid}, t.project_id) >= 1)
       union all
       (select 'project', p.id, p.name, to_char(p.end_date, 'YYYY-MM-DD'), p.id, p.name, p.color, null, p.priority, null, null
-       from projects p where p.workspace_id = ${ctx.ws.id} and p.status in ('active', 'on_hold') and p.end_date between current_date and current_date + 14
+       from projects p where p.workspace_id = ${ctx.ws.id} and p.status in ('active', 'on_hold') and p.end_date between ${todayStr()}::date and ${todayStr()}::date + 14
          and project_access_level(${uid}, p.id) >= 1)
       order by date limit 10`,
     sql<WorkloadRow[]>`
@@ -42,7 +42,7 @@ export default async function Dashboard({ params }: { params: Promise<{ slug: st
         count(t.id) filter (where t.status = 'in_progress')::int as in_progress,
         count(t.id) filter (where t.status = 'in_review')::int as in_review,
         count(t.id) filter (where t.status = 'done')::int as done,
-        count(t.id) filter (where t.status <> 'done' and t.due_date < current_date)::int as overdue
+        count(t.id) filter (where t.status <> 'done' and t.due_date < ${todayStr()}::date)::int as overdue
       from workspace_members wm join users u on u.id = wm.user_id
       left join tasks t on t.assignee_id = u.id and t.workspace_id = ${ctx.ws.id} and project_access_level(${uid}, t.project_id) >= 1
       where wm.workspace_id = ${ctx.ws.id} ${ctx.role === "guest" ? sql`and u.id = ${uid}` : sql``}

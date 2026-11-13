@@ -1,4 +1,5 @@
 import "server-only";
+import { todayStr } from "@/components/ui";
 import { sql } from "./db";
 
 export type MemberStat = { id: string; name: string; avatar_color: string; open: number; completed: number; on_time: number; with_due: number; overdue: number; avg_cycle: number | null };
@@ -17,7 +18,7 @@ export async function productivityReport(wsId: string, userId: string, from: str
              count(*) filter (where ${inPeriod})::int as completed,
              count(*) filter (where ${inPeriod} and t.due_date is not null and t.completed_at::date <= t.due_date)::int as on_time,
              count(*) filter (where ${inPeriod} and t.due_date is not null)::int as with_due,
-             count(*) filter (where t.status <> 'done' and t.due_date < current_date)::int as overdue,
+             count(*) filter (where t.status <> 'done' and t.due_date < ${todayStr()}::date)::int as overdue,
              avg(extract(epoch from (t.completed_at - t.created_at)) / 86400) filter (where ${inPeriod}) as avg_cycle
       from tasks t where ${visible} ${teamId ? sql`and t.assignee_id in (select user_id from team_members where team_id = ${teamId})` : sql``}`,
     sql<(Omit<MemberStat, "avg_cycle"> & { avg_cycle: string | null })[]>`
@@ -26,7 +27,7 @@ export async function productivityReport(wsId: string, userId: string, from: str
         count(t.id) filter (where ${inPeriod})::int as completed,
         count(t.id) filter (where ${inPeriod} and t.due_date is not null and t.completed_at::date <= t.due_date)::int as on_time,
         count(t.id) filter (where ${inPeriod} and t.due_date is not null)::int as with_due,
-        count(t.id) filter (where t.status <> 'done' and t.due_date < current_date)::int as overdue,
+        count(t.id) filter (where t.status <> 'done' and t.due_date < ${todayStr()}::date)::int as overdue,
         avg(extract(epoch from (t.completed_at - t.created_at)) / 86400) filter (where ${inPeriod}) as avg_cycle
       from workspace_members wm join users u on u.id = wm.user_id
       left join tasks t on t.assignee_id = u.id and ${visible}
@@ -39,7 +40,7 @@ export async function productivityReport(wsId: string, userId: string, from: str
         count(t.id) filter (where ${inPeriod} and t.due_date is not null and t.completed_at::date <= t.due_date)::int as on_time,
         count(t.id) filter (where ${inPeriod} and t.due_date is not null)::int as with_due,
         count(t.id) filter (where t.status <> 'done')::int as open,
-        count(t.id) filter (where t.status <> 'done' and t.due_date < current_date)::int as overdue
+        count(t.id) filter (where t.status <> 'done' and t.due_date < ${todayStr()}::date)::int as overdue
       from teams tm_t left join team_members tm on tm.team_id = tm_t.id
       left join tasks t on t.assignee_id = tm.user_id and ${visible}
       where tm_t.workspace_id = ${wsId} ${teamId ? sql`and tm_t.id = ${teamId}` : sql``}
@@ -49,7 +50,7 @@ export async function productivityReport(wsId: string, userId: string, from: str
         count(t.id) filter (where t.parent_id is null)::int as total,
         count(t.id) filter (where t.parent_id is null and t.status = 'done')::int as done,
         count(t.id) filter (where ${inPeriod})::int as completed_period,
-        count(t.id) filter (where t.status <> 'done' and t.due_date < current_date)::int as overdue
+        count(t.id) filter (where t.status <> 'done' and t.due_date < ${todayStr()}::date)::int as overdue
       from projects p left join tasks t on t.project_id = p.id
       where p.workspace_id = ${wsId} and p.status in ('active', 'on_hold') and project_access_level(${userId}, p.id) >= 1
         ${teamId ? sql`and p.team_id = ${teamId}` : sql``}

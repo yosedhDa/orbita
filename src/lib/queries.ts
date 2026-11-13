@@ -1,4 +1,5 @@
 import "server-only";
+import { todayStr } from "@/components/ui";
 import { sql } from "./db";
 import type { WsContext } from "./access";
 import type { Priority, ProjectStatus, TaskStatus, WorkspaceRole } from "./labels";
@@ -42,7 +43,7 @@ export async function listProjects(ctx: WsContext, opts: { teamId?: string; proj
       project_access_level(${ctx.user.id}, p.id) as level,
       (select count(*) from tasks x where x.project_id = p.id and x.parent_id is null)::int as total,
       (select count(*) from tasks x where x.project_id = p.id and x.parent_id is null and x.status = 'done')::int as done,
-      (select count(*) from tasks x where x.project_id = p.id and x.status <> 'done' and x.due_date < current_date)::int as overdue
+      (select count(*) from tasks x where x.project_id = p.id and x.status <> 'done' and x.due_date < ${todayStr()}::date)::int as overdue
     from projects p
     left join teams t on t.id = p.team_id
     left join users u on u.id = p.owner_id

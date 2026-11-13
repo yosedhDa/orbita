@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { todayStr } from "@/components/ui";
 import { sql } from "@/lib/db";
 import { appUrl } from "@/lib/mail";
 
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
       select t.id, t.title, to_char(t.due_date, 'YYYYMMDD') as due, t.status, p.name as project, w.slug, t.project_id, w.name as ws, t.description
       from tasks t join projects p on p.id = t.project_id join workspaces w on w.id = t.workspace_id
       join workspace_members wm on wm.workspace_id = t.workspace_id and wm.user_id = ${user.id}
-      where t.due_date is not null and t.due_date > current_date - 90 and project_access_level(${user.id}, t.project_id) >= 1
+      where t.due_date is not null and t.due_date > ${todayStr()}::date - 90 and project_access_level(${user.id}, t.project_id) >= 1
         ${all ? sql`` : sql`and (t.assignee_id = ${user.id} or exists (select 1 from task_collaborators c where c.task_id = t.id and c.user_id = ${user.id}))`}
       limit 2000`,
     sql<{ id: string; title: string; kind: string; starts_at: Date; ends_at: Date | null; description: string; project: string | null; ws: string }[]>`
