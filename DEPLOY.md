@@ -27,6 +27,10 @@ Sube esta carpeta a un repositorio de GitHub (privado o público).
 3. Pulsa *Deploy*. El script `vercel-build` **aplica las migraciones** y después compila.
 4. Si `APP_URL` no coincidía con la URL final, corrígela en *Settings → Environment Variables* y vuelve a desplegar.
 
+### Comprobar que funciona
+
+Abre `https://TU-URL/api/health`. Debe responder `"status":"ok"` con las migraciones `001_init.sql` y `002_stage3.sql`. Si responde `"status":"error"`, el campo `hint` indica qué revisar (contraseña, host, variable faltante…), sin mostrar datos sensibles.
+
 ### 4. Dominio propio (opcional)
 
 En *Vercel → Settings → Domains* añade tu dominio, configura el DNS que te indique y actualiza `APP_URL`.

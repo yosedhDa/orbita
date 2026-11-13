@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: orbita
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U app" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://app:app@localhost:5432/orbita
+      APP_URL: http://localhost:3000
+      APP_TIMEZONE: America/Mexico_City
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Tipos
+        run: npm run typecheck
+      - name: Migraciones
+        run: npm run db:migrate
+      - name: Compilación
+        run: npm run build
+      - name: Instalar navegador para pruebas
+        run: npm i --no-save playwright && npx playwright install --with-deps chromium
+      - name: Pruebas de extremo a extremo
+        run: |
+          npm start > server.log 2>&1 &
+          npx --yes wait-on http://localhost:3000/api/health --timeout 60000
+          npm run test:e2e
+      - name: Registros del servidor (si falla)
+        if: failure()
+        run: tail -100 server.log
+      - name: Capturas de pantalla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas
+          path: tests/output/
+          if-no-files-found: ignore

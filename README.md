@@ -117,6 +117,10 @@ npm run test:e2e
 
 La suite (33 escenarios) comprueba los criterios de aceptación con tres usuarios reales (administrador, colaborador e invitado): registro e inicio de sesión, creación del espacio, invitación y aceptación, proyectos y tareas, edición e historial, subtareas, checklist, menciones y notificaciones, Kanban con arrastrar y soltar persistido, calendario, dashboard contra la base de datos, proyecto privado inaccesible (404) e invisible en listados y exportaciones, rechazo de escrituras sin permiso (403), adjuntos con control de acceso, invitado limitado a un proyecto, enlace público (sin datos privados) y su revocación, revocación de miembros, equipos y líderes, documentos con tablas y versiones, recuperación de contraseña (token de un solo uso que cierra las sesiones previas), sincronización entre usuarios diseño móvil sin desbordamiento, automatizaciones (checklist al crear y notificación al pasar a revisión), objetivos automáticos y manuales, reportes contra la base de datos (y sin proyectos privados para quien no tiene acceso) y feed ICS privado y revocable. Las capturas quedan en `tests/output/`.
 
+## Integración continua
+
+`.github/workflows/ci.yml` compila, comprueba tipos, aplica migraciones sobre un PostgreSQL temporal y ejecuta la suite E2E en cada `push` y pull request. Las capturas quedan como artefacto de la ejecución.
+
 ## Publicación en internet
 
 Consulta **[DEPLOY.md](./DEPLOY.md)** para el paso a paso con Vercel + Supabase o Neon, y con Docker.
